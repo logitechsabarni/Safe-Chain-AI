@@ -1,13 +1,24 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { certsStore } from "@/lib/store"
+import { NextResponse } from "next/server"
+import { getProvider } from "@/lib/chain"
 
-export async function POST(req: NextRequest) {
-  const { certificateId, commitment } = await req.json().catch(() => ({}))
-  if (!certificateId || !commitment) return NextResponse.json({ error: "missing_fields" }, { status: 400 })
-  const rec = certsStore.get(certificateId)
-  if (!rec) return NextResponse.json({ error: "not_found" }, { status: 404 })
-  if (!rec.bio?.commitment) return NextResponse.json({ ok: false, reason: "no_biometric_on_record" }, { status: 400 })
-
-  const ok = commitment === rec.bio.commitment
-  return NextResponse.json({ ok })
+export async function GET(_req: Request, { params }: { params: { txHash: string } }) {
+  try {
+    const provider = getProvider()
+    const tx = await provider.getTransaction(params.txHash)
+    if (!tx) return NextResponse.json({ error: "Transaction not found" }, { status: 404 })
+    const receipt = await provider.getTransactionReceipt(params.txHash)
+    const block = receipt ? await provider.getBlock(receipt.blockNumber) : null
+    return NextResponse.json({
+      hash: tx.hash,
+      from: tx.from,
+      to: tx.to,
+      input: tx.data, // 0x + hex
+      blockNumber: receipt?.blockNumber ?? null,
+      status: receipt?.status ?? null,
+      timestamp: block?.timestamp ?? null,
+      value: tx.value?.toString() ?? "0",
+    })
+  } catch (err: any) {
+    return NextResponse.json({ error: String(err?.message || err) }, { status: 400 })
+  }
 }
